@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Моніторинг Підстанції 110/10 кВ</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #fff5f7; color: #444; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 15px; border: 1px solid #ffd1dc; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h2 { color: #d87093; text-align: center; }
+        .temp-val { font-size: 35px; font-weight: bold; text-align: center; color: #ff69b4; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #ffe4e1; text-align: center; }
+        .warning { color: #e57373; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Об'єкт: Трансформаторна підстанція 110/10 кВ</h2>
+    <div class="grid">
+        <div class="card">
+            <h3>Векторна діаграма потужностей</h3>
+            <canvas id="vectorChart"></canvas>
+        </div>
+        <div class="card">
+            <h3>Температура та статус</h3>
+            <div id="tempDisplay" class="temp-val">-- °C</div>
+            <p id="statusText" style="text-align:center; font-weight:bold;"></p>
+        </div>
+        <div class="card" style="grid-column: span 2;">
+            <h3>Графік навантаження (МВт) - Реальний час</h3>
+            <canvas id="loadChart" height="100"></canvas>
+        </div>
+        <div class="card" style="grid-column: span 2;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Обмотка</th>
+                        <th>Напруга (кВ)</th>
+                        <th>P (МВт)</th>
+                        <th>Q (МВАр)</th>
+                        <th>cos φ</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let loadChart, vectorChart;
+
+    function initCharts() {
+        const ctxL = document.getElementById('loadChart').getContext('2d');
+        loadChart = new Chart(ctxL, {
+            type: 'line',
+            data: { labels: Array.from({length: 10}, (_, i) => i), datasets: [{ label: 'Навантаження', data: [], borderColor: '#ffb6c1', fill: true }] }
+        });
+
+        const ctxV = document.getElementById('vectorChart').getContext('2d');
+        vectorChart = new Chart(ctxV, {
+            type: 'scatter',
+            data: { datasets: [{ label: 'Вектор S', data: [{x:0, y:0}, {x:0, y:0}], showLine: true, borderColor: '#db7093', borderWidth: 3 }] },
+            options: { scales: { x: {min:0, max:100}, y: {min:0, max:100} } }
+        });
+    }
+
+    async function fetchData() {
+        try {
+            const response = await fetch('/api/stats');
+            const data = await response.json();
+
+            document.getElementById('tempDisplay').innerText = data.temp + " °C";
+            document.getElementById('tableBody').innerHTML = `
+                <tr><td>Первинна</td><td>${data.v1}</td><td>${data.p}</td><td>${data.q}</td><td rowspan="2">${data.cos}</td></tr>
+                <tr><td>Вторинна</td><td>${data.v2}</td><td>-</td><td>-</td></tr>`;
+
+            vectorChart.data.datasets[0].data[1] = {x: data.p, y: data.q};
+            vectorChart.update();
+
+            loadChart.data.datasets[0].data.push(data.p);
+            if(loadChart.data.datasets[0].data.length > 10) loadChart.data.datasets[0].data.shift();
+            loadChart.update();
+
+        } catch (e) { console.log("Чекаю на сервер..."); }
+    }
+
+    initCharts();
+    setInterval(fetchData, 3000); 
+</script>
+</body>
+</html>
